@@ -45,3 +45,65 @@ netapp_SVM.py -h | --help
 - [STORAGE] => name of your storage
 - [SVM] => name of StorageVM
 
+##FLOWCHART
+
+```mermaid
+flowchart LR
+    S([START]) --> IO[/INPUT<br>Storage<br>Filesystem<br>Snapshot<br>Operation:<br><i>CREATE,REMOVE,GETDETAILS/]
+    IO --> CR[CREATE]
+    CR --> CHK{If StorageVM exist}
+    CHK --YES--> X{SVM Exist}
+    X --YES--> CRX>SVM Exist]
+    CHK --NO--> VL{If StorageVM name valid}
+    VL --YES--> OUT>CRETED]
+    VL --NO--> IV>Invalid StorageVM name]
+    IO --> RM[REMOVE]
+    RM --> CHK
+    CHK --YES--> X
+    X --YES--> ID[GET UUID]
+    ID --> DEL[DELETE StorageVM]
+    CHK --NO--> NX>Does not Exist]
+    IO --> DT[DETAILS]
+    DT --> CHK
+    CHK --YES--> X
+    X --> dtls>Show Details]
+    CHK --NO--> NX
+
+
+
+style CR stroke:green,stroke-width:1px
+style RM stroke:red,stroke-width:1px
+style DT stroke:blue,stroke-width:1px
+
+linkStyle 1 stroke-width:2px,fill:none,stroke:green;
+linkStyle 2 stroke-width:2px,fill:none,stroke:green;
+linkStyle 3 stroke-width:2px,fill:none,stroke:green;
+linkStyle 4 stroke-width:2px,fill:none,stroke:green;
+linkStyle 5 stroke-width:2px,fill:none,stroke:green;
+linkStyle 6 stroke-width:2px,fill:none,stroke:green;
+linkStyle 7 stroke-width:2px,fill:none,stroke:green;
+
+linkStyle 8 stroke-width:2px,fill:none,stroke:red;
+linkStyle 9 stroke-width:2px,fill:none,stroke:red;
+linkStyle 10 stroke-width:2px,fill:none,stroke:red;
+linkStyle 11 stroke-width:2px,fill:none,stroke:red;
+linkStyle 12 stroke-width:2px,fill:none,stroke:red;
+linkStyle 13 stroke-width:2px,fill:none,stroke:red;
+
+linkStyle 14 stroke-width:2px,fill:none,stroke:blue;
+linkStyle 15 stroke-width:2px,fill:none,stroke:blue;
+linkStyle 16 stroke-width:2px,fill:none,stroke:blue;
+linkStyle 17 stroke-width:2px,fill:none,stroke:blue;
+linkStyle 18 stroke-width:2px,fill:none,stroke:blue;
+
+
+
+
+
+
+
+
+
+
+
+```
