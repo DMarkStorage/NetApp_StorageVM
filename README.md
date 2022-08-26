@@ -48,14 +48,14 @@ netapp_SVM.py -h | --help
 ##FLOWCHART
 
 ```mermaid
-flowchart LR
+flowchart TB
     S([START]) --> IO[/INPUT<br>Storage<br>Filesystem<br>Snapshot<br>Operation:<br><i>CREATE,REMOVE,GETDETAILS/]
     IO --> CR[CREATE]
     CR --> CHK{If StorageVM exist}
     CHK --YES--> X{SVM Exist}
     X --YES--> CRX>SVM Exist]
     CHK --NO--> VL{If StorageVM name valid}
-    VL --YES--> OUT>CRETED]
+    VL --YES--> OUT>CREATED]
     VL --NO--> IV>Invalid StorageVM name]
     IO --> RM[REMOVE]
     RM --> CHK
@@ -68,7 +68,12 @@ flowchart LR
     CHK --YES--> X
     X --> dtls>Show Details]
     CHK --NO--> NX
-
+    NX ---> EN([END])
+    dtls ---> EN
+    DEL ---> EN
+    CRX ---> EN
+    IV ---> EN
+    OUT --> EN
 
 
 style CR stroke:green,stroke-width:1px
