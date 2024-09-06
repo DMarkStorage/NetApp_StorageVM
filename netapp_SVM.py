@@ -1,263 +1,159 @@
-import requests, base64
+import requests
+import base64
 import json
-import os
 import traceback
 from docopt import docopt
 from prettytable import PrettyTable
+
 requests.packages.urllib3.disable_warnings()
 
-
-
 def get_args():
+    """
+    Define and parse command-line arguments.
+    """
+    usage = """
+    Usage:
+        netapp_SVM.py -s <STORAGE> -VM <SVM> --create
+        netapp_SVM.py -s <STORAGE> -VM <SVM> --remove
+        netapp_SVM.py -s <STORAGE> -VM <SVM> --details
+        netapp_SVM.py --version
+        netapp_SVM.py -h | --help
 
-	usage = """
-	Usage:
-		netapp_SVM.py -s <STORAGE> -VM <SVM> --create
-		netapp_SVM.py -s <STORAGE> -VM <SVM> --remove
-		netapp_SVM.py -s <STORAGE> -VM <SVM> --details
+    Options:
+        -h --help            Show this message and exit
+        
+    """
+    return docopt(usage)
 
-		netapp_SVM.py --version
-		netapp_SVM.py -h | --help
+def get_headers():
+    """
+    Generate authorization headers for the API requests.
+    """
+    username = "admin"
+    password = "netapp1234"
+    encoded_credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+    return {"Authorization": f"Basic {encoded_credentials}"}
 
-	Options:
-		-h --help            Show this message and exit
-		-s <STORAGE>         ZFS appliance/storage name
+def handle_request_errors(func):
+    """
+    Decorator to handle request and other exceptions.
+    """
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except requests.exceptions.RequestException:
+            print('Cannot connect to the storage!')
+        except json.decoder.JSONDecodeError:
+            print('Failed to parse the server response!')
+        except Exception as e:
+            print(f"Error: {str(e)}")
+    return wrapper
 
-	"""
-	# version = '{} VER: {} REV: {}'.format(__program__, __version__, __revision__)
-	# args = docopt(usage, version=version)
-	args = docopt(usage)
-	return args	
+@handle_request_errors
+def get_svm(svm_name, storage):
+    """
+    Retrieve SVM details.
+    """
+    url = f'https://{storage}/api/svm/svms?name={svm_name}'
+    headers = get_headers()
+    
+    r = requests.get(url, verify=False, headers=headers)
+    d = r.json()
+    svm_url = f"https://{storage}{d['records'][0]['_links']['self']['href']}"
+    
+    req = requests.get(svm_url, verify=False, headers=headers)
+    return req.json()
 
-def Headers():
-	username = "admin"
-	password = "netapp123"
-	userpass = username + ':' + password
-	encoded_u = base64.b64encode(userpass.encode()).decode()
+@handle_request_errors
+def check_svm_exists(svm_name, storage):
+    """
+    Check if the SVM exists on the storage.
+    """
+    url = f'https://{storage}/api/svm/svms'
+    headers = get_headers()
 
-	headers = {"Authorization" : "Basic %s" % encoded_u}
+    r = requests.get(url, verify=False, headers=headers)
+    svms = [svm['name'] for svm in r.json()['records']]
 
-	return headers
+    if svm_name in svms:
+        print(f'The SVM named {svm_name} is already running!')
+        return True
+    return False
 
+@handle_request_errors
+def create_svm(svm_name, storage):
+    """
+    Create a new SVM on the storage.
+    """
+    if check_svm_exists(svm_name, storage):
+        return
+    
+    data = {
+        "name": svm_name,
+        "snapshot_policy": {"name": "default"}
+    }
+    url = f'https://{storage}/api/svm/svms'
+    headers = get_headers()
 
-def get_svm(svm, storage):
+    if svm_name.isalnum():
+        r = requests.post(url, json=data, verify=False, headers=headers)
+        job_url = f"https://{storage}{r.json()['job']['_links']['self']['href']}"
+        
+        t = PrettyTable(field_names=['SVM', 'Status', 'Details'])
+        job_resp = requests.get(job_url, verify=False, headers=headers).json()
 
-	url = 'https://'+storage
-	headers = Headers()
+        t.add_row([svm_name, job_resp['state'], job_resp['start_time']])
+        print(t)
+    else:
+        print('Invalid SVM name!')
 
-	try:
-		r = requests.get(url+'/api/svm/svms?name='+svm,
-						 verify=False, headers = headers)
-		status = r.status_code
+@handle_request_errors
+def delete_svm(svm_name, storage):
+    """
+    Delete an SVM from the storage.
+    """
+    svm_data = get_svm(svm_name, storage)
+    if not svm_data:
+        return
+    
+    uuid = svm_data['uuid']
+    url = f'https://{storage}/api/svm/svms/{uuid}'
+    headers = get_headers()
+    
+    r = requests.delete(url, verify=False, headers=headers)
+    job_url = f"https://{storage}{r.json()['job']['_links']['self']['href']}"
+    
+    t = PrettyTable(field_names=['SVM Name', 'State', 'Details', 'Message'])
+    job_resp = requests.get(job_url, verify=False, headers=headers).json()
 
-		resp={}
-		vm=[]
-		d = r.json()
-		uu = d['records'][0]['_links']['self']['href']
-		url1 = 'https://'+storage+ uu
-		req = requests.get(url1,verify=False, headers = headers)
-		data1 = req.json()
-		resp.update(data1)
+    t.add_row([svm_name, job_resp['state'], job_resp['description'], job_resp['message']])
+    print(t)
 
-		return resp
-		
-	except requests.exceptions.ConnectionError as err:
-		print('Cant connect to the storage!')
-		quit()
-
-	except IndexError as err:
-		print('SVM not found!')
-		quit()
-	except json.decoder.JSONDecodeError as err:
-		print('Cant connect to the storage!')
-		quit()
-	except requests.exceptions.HTTPError as err:
-		print('Cant connect to the storage!')
-		quit()
-	except requests.exceptions.RequestException as err:
-		print('Cant connect to the storage!')
-		quit()
-	except Exception as e:
-		raise e
-		quit()
-
-
-def check_svm(svm, storage):
-
-	url = 'https://'+storage
-	headers = Headers()
-
-	vm_name = {}
-	try:
-		r = requests.get(url+'/api/svm/svms',
-		verify=False, headers = headers)
-		data = r.json()
-		vm_name.update(data)
-
-		vm=[]
-
-		for i in vm_name['records']:
-			vm.append(i['name'])
-
-		if svm in vm:
-			print('The VM named '+svm+' is already running!')
-			quit()
-		else:
-			pass
-	except requests.exceptions.ConnectionError as err:
-		print('Cant connect to the storage!')
-		quit()
-
-	except json.decoder.JSONDecodeError as err:
-		print('Cant connect to the storage!')
-		quit()
-
-	except requests.exceptions.HTTPError as err:
-		print('Cant connect to the storage!')
-		quit()
-
-	except requests.exceptions.RequestException as err:
-		print('Cant connect to the storage!')
-		quit()
-		
-	except Exception as e:
-		raise e
-		quit()
-
-
-
-def	create_svm(svm,storage):
-
-	check_svm(svm, storage)
-	data = {
-		"name" : svm,
-		"snapshot_policy" :{
-				'name':'default'
-		},
-	}
-
-	data_ = json.dumps(data)
-	url = 'https://'+storage
-	headers = Headers()
-	try:
-		if svm.isalnum():
-			t = PrettyTable()
-			r = requests.post(url+'/api/svm/svms', data = data_,
-							 verify=False, headers = headers)
-
-			status = r.status_code
-
-			# try:
-			print('-'*50)
-			resp={}
-			d = r.json()
-			url1 = 'https://'+storage+ d['job']['_links']['self']['href']
-			req = requests.get(url1,verify=False, headers = headers)
-			data1 = req.json()
-			resp.update(data1)
-
-			t.field_names = [
-			'SVM',
-			'Status',
-			'Details'
-			]
-
-			t.add_row(
-				[svm,
-				resp['state'],
-				resp['start_time'],
-				]
-				)
-			print(t)
-
-
-		else:
-			print('SVM name is not valid!')
-
-		
-	except Exception as e:
-		raise e
-		quit()
-
-def delete_svm(svm,storage):
-	t = PrettyTable()
-
-	data_svm = get_svm(svm,storage)
-	uuid = data_svm['uuid']
-	
-	data = {
-		"uuid" : uuid
-	}
-
-	data_ = json.dumps(data)
-	url = 'https://'+storage
-	headers = Headers()
-
-	r = requests.delete(url+'/api/svm/svms', data = data_,
-					 verify=False, headers = headers)
-
-	status = r.status_code
-	print(status)
-	print(r.text)
-	resp2={}
-	print(resp2)
-
-	d = r.json()
-	url1 = 'https://'+storage+ d['job']['_links']['self']['href']
-	newresp = requests.get(url1,verify=False, headers = headers)
-	print(newresp.text)
-	d = newresp.json()
-	resp2.update(d)
-
-	print(url1)
-	print(resp2)
-
-	t.field_names = [
-			'SVM name',
-			'State',
-			'Details',
-			'Mesage'
-			]
-
-	t.add_row(
-			[
-			svm,
-			resp2['state'],
-			resp2['description'],
-			resp2['message'],
-			]
-		)
-	print(t)
-
-
-def details_svm(svm,storage):
-
-	data = get_svm(svm,storage)
-	print(json.dumps(data, indent = 2))
-
-
+@handle_request_errors
+def show_svm_details(svm_name, storage):
+    """
+    Display details of a specific SVM.
+    """
+    svm_data = get_svm(svm_name, storage)
+    if svm_data:
+        print(json.dumps(svm_data, indent=2))
 
 def main(args):
-	storage = args['<STORAGE>']
-	svm_name = args['<SVM>']
+    storage = args['<STORAGE>']
+    svm_name = args['<SVM>']
 
-
-	if args['--create']:
-		create_svm(svm_name,storage)
-
-	elif args['--remove']:
-		delete_svm(svm_name,storage)
-
-	elif args['--details']:
-		details_svm(svm_name,storage)
+    if args['--create']:
+        create_svm(svm_name, storage)
+    elif args['--remove']:
+        delete_svm(svm_name, storage)
+    elif args['--details']:
+        show_svm_details(svm_name, storage)
 
 if __name__ == '__main__':
-	try:
-		ARGS = get_args()
-
-		main(ARGS)
-	except KeyboardInterrupt:
-		print('\nReceived Ctrl^C. Exiting....')
-	except Exception:
-		ETRACE = traceback.format_exc()
-		print(ETRACE)
+    try:
+        ARGS = get_args()
+        main(ARGS)
+    except KeyboardInterrupt:
+        print('\nReceived Ctrl^C. Exiting...')
+    except Exception:
+        print(traceback.format_exc())
